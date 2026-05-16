@@ -1,0 +1,2 @@
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/output_windows/hospitalito.pdb
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/output_windows/hospitalito.exe

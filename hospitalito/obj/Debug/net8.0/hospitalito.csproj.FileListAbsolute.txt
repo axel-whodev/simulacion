@@ -1,0 +1,14 @@
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/bin/Debug/net8.0/hospitalito
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/bin/Debug/net8.0/hospitalito.deps.json
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/bin/Debug/net8.0/hospitalito.runtimeconfig.json
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/bin/Debug/net8.0/hospitalito.dll
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/bin/Debug/net8.0/hospitalito.pdb
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.GeneratedMSBuildEditorConfig.editorconfig
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.AssemblyInfoInputs.cache
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.AssemblyInfo.cs
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.csproj.CoreCompileInputs.cache
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.dll
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/refint/hospitalito.dll
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.pdb
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/hospitalito.genruntimeconfig.cache
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Debug/net8.0/ref/hospitalito.dll
