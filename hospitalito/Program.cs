@@ -6,14 +6,10 @@ using System.Threading;
 namespace HospitalSim
 {
     // ─────────────────────────────────────────────────────────────────────────
-    //  MODELOS DE DATA A USAR
+    //  MODELOS DE DATA
     // ─────────────────────────────────────────────────────────────────────────
-    
-    // usamos 'record' para almacenar todos datos estáticos
-    // representa cada tipo de servicio disponible en el hospital
     record Servicio(string Nombre, double Probabilidad, double Precio);
 
-    // guarda el resumen estadístico y financiero de un día completo de simulación
     record ResultadoDia(
         int    Dia,
         double UPacientes,
@@ -21,9 +17,47 @@ namespace HospitalSim
         double IngresosDia,
         double IngresoAcumulado
     );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GENERADOR CONGRUENCIAL MIXTO PROPIO  (sin usar System.Random)
+    //  Fórmula: X_{n+1} = (A * X_n + C) mod M
+    //  U_n = X_n / M   →   valor en [0, 1)
+    // ─────────────────────────────────────────────────────────────────────────
+    class Rnd
+    {
+        private long _x;          // semilla / estado actual
+        private readonly long _a; // multiplicador
+        private readonly long _c; // incremento
+        private readonly long _m; // módulo
+
+        public Rnd(long x0, long a, long c, long m)
+        {
+            _x = x0;
+            _a = a;
+            _c = c;
+            _m = m;
+        }
+
+        /// <summary>Genera el siguiente número en [0, 1)</summary>
+        public double NextDouble()
+        {
+            _x = (_a * _x + _c) % _m;
+            return (double)_x / _m;
+        }
+
+        /// <summary>Genera una lista de 'n' números U en [0,1)</summary>
+        public List<double> Generar(int n)
+        {
+            var lista = new List<double>(n);
+            for (int i = 0; i < n; i++)
+                lista.Add(NextDouble());
+            return lista;
+        }
+    }
+
     class Program
     {
-        // definir la paleta de colores para mantener la interfaz consistente siempre
+        // ── Paleta de colores ────────────────────────────────────────────────
         const ConsoleColor COLOR_TITULO   = ConsoleColor.Cyan;
         const ConsoleColor COLOR_HEADER   = ConsoleColor.Yellow;
         const ConsoleColor COLOR_POSITIVO = ConsoleColor.Green;
@@ -33,10 +67,8 @@ namespace HospitalSim
         const ConsoleColor COLOR_INFO     = ConsoleColor.DarkCyan;
         const ConsoleColor COLOR_TABLA    = ConsoleColor.DarkGray;
 
-        // costo fijo mensual del hospital
         static readonly double CostoMensual = 5000.00;
 
-        // la lista de servicios
         static readonly List<Servicio> Servicios = new()
         {
             new("Atenc. Emergencia",       0.10,  75.00),
@@ -48,20 +80,258 @@ namespace HospitalSim
             new("Cuidados Intensivos",     0.15, 200.00),
         };
 
+        // ── Generador global (se inicializa al arrancar) ─────────────────────
+        static Rnd? _rnd;
+
         // ─────────────────────────────────────────────────────────────────────
-        //  PUNTO DE ENTRADA (EL ENTRY POINT)
+        //  ENTRY POINT
         // ─────────────────────────────────────────────────────────────────────
         static void Main()
         {
-            // forzamos UTF8 para que se dibujen bien las tablas y símbolos dentro de la consola
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.CursorVisible  = false;
-            
+
             MostrarPantallaBienvenida();
             Console.ReadKey(true);
+
+            // Antes del menú: configurar y validar el generador
+            ConfigurarGeneradorCongruencial();
+
             MostrarMenuPrincipal();
         }
 
+        // ─────────────────────────────────────────────────────────────────────
+        //  CONFIGURACIÓN DEL GENERADOR CONGRUENCIAL MIXTO
+        // ─────────────────────────────────────────────────────────────────────
+        static void ConfigurarGeneradorCongruencial()
+        {
+            while (true)
+            {
+                Console.Clear();
+                EncabezadoSeccion("CONFIGURACIÓN — GENERADOR CONGRUENCIAL MIXTO");
+                Console.WriteLine();
+                Escribir("  Fórmula: X_{n+1} = (A * X_n + C) mod M\n", COLOR_INFO);
+                Escribir("  U_n = X_n / M   →   número en [0, 1)\n\n", COLOR_INFO);
+                Console.CursorVisible = true;
+
+                long x0 = PedirEnteroPositivo("  Semilla  X0 : ");
+                long a  = PedirEnteroPositivo("  Multiplicador A : ");
+                long c  = PedirEnteroPositivo("  Incremento    C : ");
+                long m  = PedirEnteroPositivo("  Módulo        M : ");
+
+                Console.CursorVisible = false;
+
+                // Crear generador temporal para pruebas
+                var rndTemp = new Rnd(x0, a, c, m);
+
+                // Pedimos cuántos números generar para las pruebas
+                Console.WriteLine();
+                Console.CursorVisible = true;
+                Escribir("  ¿Cuántos números generar para las pruebas de uniformidad? (mín 20): ", COLOR_HEADER);
+                if (!int.TryParse(Console.ReadLine(), out int nPrueba) || nPrueba < 20)
+                    nPrueba = 20;
+                Console.CursorVisible = false;
+
+                var numerosU = rndTemp.Generar(nPrueba);
+
+                // Mostrar los números generados en pantalla
+                Console.Clear();
+                EncabezadoSeccion($"NÚMEROS GENERADOS AUTOMÁTICAMENTE ({nPrueba})");
+                Console.WriteLine();
+                for (int i = 0; i < numerosU.Count; i++)
+                {
+                    Escribir($" {numerosU[i]:F4} ", COLOR_NEUTRO);
+                    if ((i + 1) % 10 == 0) Console.WriteLine(); // Muestra 10 números por línea
+                }
+                Console.WriteLine("\n");
+                Escribir("  Presiona cualquier tecla para someter la secuencia a pruebas estadísticas...", COLOR_HEADER);
+                Console.ReadKey(true);
+
+                // ── PRUEBA 1: Chi-cuadrada ───────────────────────────────────
+                bool pasoChi = PruebaChiCuadrada(numerosU);
+
+                // ── PRUEBA 2: Kolmogorov-Smirnov ────────────────────────────
+                bool pasoKS = PruebaKolmogorovSmirnov(numerosU);
+
+                Console.WriteLine();
+                if (pasoChi && pasoKS)
+                {
+                    Escribir("  ✔ Ambas pruebas APROBADAS. Los parámetros son válidos.\n", COLOR_POSITIVO);
+                    Escribir("  Presiona cualquier tecla para continuar al menú...", COLOR_HEADER);
+                    Console.ReadKey(true);
+                    // Recrear con la semilla original para que la simulación empiece desde X0
+                    _rnd = new Rnd(x0, a, c, m);
+                    return;
+                }
+                else
+                {
+                    Escribir("  ✘ Una o más pruebas FALLARON. Los números generados\n", COLOR_NEGATIVO);
+                    Escribir("    no superan la prueba de uniformidad.\n", COLOR_NEGATIVO);
+                    Escribir("    Ingresa nuevos parámetros.\n\n", COLOR_NEGATIVO);
+                    Escribir("  Presiona cualquier tecla para reintentar...", COLOR_HEADER);
+                    Console.ReadKey(true);
+                }
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  PRUEBA 1 — CHI-CUADRADA  (goodness-of-fit con k intervalos iguales)
+        //  H0: los números siguen una distribución Uniforme(0,1)
+        //  Si X² calculado < X² crítico → no se rechaza H0 → pasan la prueba
+        // ─────────────────────────────────────────────────────────────────────
+        static bool PruebaChiCuadrada(List<double> datos)
+        {
+            Console.Clear();
+            EncabezadoSeccion("PRUEBA 1 — CHI-CUADRADA (Frecuencias Observadas vs Esperadas)");
+            Console.WriteLine();
+            Escribir("  Método: Chi-cuadrada de Pearson con k = 10 intervalos iguales.\n", COLOR_INFO);
+            Escribir("  H0: Los números siguen distribución Uniforme(0,1).\n", COLOR_INFO);
+            Escribir("  Nivel de significancia α = 0.05\n\n", COLOR_INFO);
+
+            int n = datos.Count;
+            int k = 10; // número de intervalos
+            double esperado = (double)n / k;
+
+            // Contar frecuencias observadas por intervalo [i/k, (i+1)/k)
+            int[] obs = new int[k];
+            foreach (var u in datos)
+            {
+                int idx = (int)(u * k);
+                if (idx >= k) idx = k - 1;
+                obs[idx]++;
+            }
+
+            // Calcular estadístico Chi²
+            double chiCalc = 0;
+            string sep = new string('─', 52);
+            Escribir($"  ╔{sep}╗\n", COLOR_TABLA);
+            Escribir("  ║", COLOR_TABLA);
+            Escribir($"  {"Intervalo",-18}{"Observado",10}{"Esperado",10}{"(O-E)²/E",12}   ", COLOR_HEADER);
+            Escribir("║\n", COLOR_TABLA);
+            Escribir($"  ╠{sep}╣\n", COLOR_TABLA);
+
+            for (int i = 0; i < k; i++)
+            {
+                double contrib = Math.Pow(obs[i] - esperado, 2) / esperado;
+                chiCalc += contrib;
+                string intervalo = $"[{i * 0.1:F1}, {(i + 1) * 0.1:F1})";
+                Escribir("  ║ ", COLOR_TABLA);
+                Escribir($"{intervalo,-18}", COLOR_NEUTRO);
+                Escribir($"{obs[i],10}", COLOR_ACCENT);
+                Escribir($"{esperado,10:F2}", COLOR_INFO);
+                Escribir($"{contrib,12:F4}", COLOR_POSITIVO);
+                Escribir("   ║\n", COLOR_TABLA);
+            }
+            Escribir($"  ╚{sep}╝\n", COLOR_TABLA);
+
+            // Valor crítico Chi² con gl = k-1 = 9, α = 0.05 → 16.919
+            double chiCritico = 16.919;
+            int gl = k - 1;
+
+            Console.WriteLine();
+            Escribir($"  Chi² calculado : {chiCalc:F4}\n", COLOR_NEUTRO);
+            Escribir($"  Chi² crítico   : {chiCritico:F4}  (gl={gl}, α=0.05)\n", COLOR_NEUTRO);
+
+            bool pasa = chiCalc <= chiCritico;
+            Console.WriteLine();
+            if (pasa)
+                Escribir("  Resultado: ✔ No se rechaza H0 → distribución UNIFORME.\n", COLOR_POSITIVO);
+            else
+                Escribir("  Resultado: ✘ Se rechaza H0 → distribución NO uniforme.\n", COLOR_NEGATIVO);
+
+            Escribir("\n  Presiona cualquier tecla para ver la Prueba 2...", COLOR_HEADER);
+            Console.ReadKey(true);
+            return pasa;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  PRUEBA 2 — KOLMOGOROV-SMIRNOV
+        //  Compara la CDF empírica F_n(x) contra la CDF teórica F(x) = x
+        //  D = max|F_n(x_i) - x_i|
+        //  Si D calculado < D crítico → no se rechaza H0
+        // ─────────────────────────────────────────────────────────────────────
+        static bool PruebaKolmogorovSmirnov(List<double> datos)
+        {
+            Console.Clear();
+            EncabezadoSeccion("PRUEBA 2 — KOLMOGOROV-SMIRNOV");
+            Console.WriteLine();
+            Escribir("  Método: Kolmogorov-Smirnov de una muestra.\n", COLOR_INFO);
+            Escribir("  H0: Los números siguen distribución Uniforme(0,1).\n", COLOR_INFO);
+            Escribir("  Nivel de significancia α = 0.05\n\n", COLOR_INFO);
+
+            int n = datos.Count;
+            var sorted = datos.OrderBy(x => x).ToList();
+
+            double D = 0;
+            double Dmas = 0;
+            double Dmenos = 0;
+
+            string sep = new string('─', 66);
+            Escribir($"  ╔{sep}╗\n", COLOR_TABLA);
+            Escribir("  ║", COLOR_TABLA);
+            Escribir($"  {"i",4}{"U(i)",10}{"F(i)=i/n",10}{"F(i-1)",10}{"D+",10}{"D-",10}{"Di",10}   ", COLOR_HEADER);
+            Escribir("║\n", COLOR_TABLA);
+            Escribir($"  ╠{sep}╣\n", COLOR_TABLA);
+
+            // Mostramos solo las primeras 15 filas para no saturar la pantalla
+            int mostrar = Math.Min(n, 15);
+
+            for (int i = 1; i <= n; i++)
+            {
+                double ui    = sorted[i - 1];
+                double Fi    = (double)i / n;        // CDF empírica en i
+                double Fi_1  = (double)(i - 1) / n;  // CDF empírica en i-1
+                double dMas  = Math.Abs(Fi - ui);    // |F(i) - U(i)|
+                double dMen  = Math.Abs(ui - Fi_1);  // |U(i) - F(i-1)|
+                double di    = Math.Max(dMas, dMen);
+
+                if (di > D) D = di;
+                if (dMas > Dmas) Dmas = dMas;
+                if (dMen > Dmenos) Dmenos = dMen;
+
+                if (i <= mostrar)
+                {
+                    Escribir("  ║ ", COLOR_TABLA);
+                    Escribir($"{i,4}", COLOR_NEUTRO);
+                    Escribir($"{ui,10:F4}", COLOR_ACCENT);
+                    Escribir($"{Fi,10:F4}", COLOR_INFO);
+                    Escribir($"{Fi_1,10:F4}", COLOR_INFO);
+                    Escribir($"{dMas,10:F4}", COLOR_NEUTRO);
+                    Escribir($"{dMen,10:F4}", COLOR_NEUTRO);
+                    Escribir($"{di,10:F4}", di == D ? COLOR_NEGATIVO : COLOR_NEUTRO);
+                    Escribir("   ║\n", COLOR_TABLA);
+                }
+            }
+            if (n > mostrar)
+            {
+                Escribir("  ║ ", COLOR_TABLA);
+                Escribir($"  ... ({n - mostrar} filas omitidas para visualización) ...".PadRight(64), COLOR_TABLA);
+                Escribir("   ║\n", COLOR_TABLA);
+            }
+            Escribir($"  ╚{sep}╝\n", COLOR_TABLA);
+
+            // Valor crítico K-S para α=0.05: D_critico ≈ 1.36 / sqrt(n)
+            double dCritico = 1.36 / Math.Sqrt(n);
+
+            Console.WriteLine();
+            Escribir($"  D calculado    : {D:F4}  (max entre D+={Dmas:F4} y D-={Dmenos:F4})\n", COLOR_NEUTRO);
+            Escribir($"  D crítico      : {dCritico:F4}  (1.36/√{n}, α=0.05)\n", COLOR_NEUTRO);
+
+            bool pasa = D <= dCritico;
+            Console.WriteLine();
+            if (pasa)
+                Escribir("  Resultado: ✔ No se rechaza H0 → distribución UNIFORME.\n", COLOR_POSITIVO);
+            else
+                Escribir("  Resultado: ✘ Se rechaza H0 → distribución NO uniforme.\n", COLOR_NEGATIVO);
+
+            Escribir("\n  Presiona cualquier tecla para continuar...", COLOR_HEADER);
+            Console.ReadKey(true);
+            return pasa;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  PANTALLA DE BIENVENIDA
+        // ─────────────────────────────────────────────────────────────────────
         static void MostrarPantallaBienvenida()
         {
             Console.Clear();
@@ -79,10 +349,10 @@ namespace HospitalSim
             CentrarTexto("S I M U L A D O R   D E   O P E R A C I O N E S", COLOR_HEADER);
             CentrarTexto("─────────────────────────────────────────────────", COLOR_TABLA);
             CentrarTexto("Simulación de Monte Carlo  •  Distribución Triangular", COLOR_INFO);
-            CentrarTexto("Transformada Inversa  •  Números U ingresados manualmente", COLOR_INFO);
-            CentrarTexto("", ConsoleColor.White);
+            CentrarTexto("Generador Congruencial Mixto  •  Pruebas Chi² y K-S", COLOR_INFO);
+            Console.WriteLine();
 
-            DibujarCaja(14, Console.CursorTop, 60, 5, COLOR_ACCENT);
+            DibujarCaja(14, Console.CursorTop, 60, 6, COLOR_ACCENT);
             Console.SetCursorPosition(16, Console.CursorTop);
             Escribir("  Parámetros del Problema:", COLOR_HEADER); Console.WriteLine();
             Console.SetCursorPosition(16, Console.CursorTop);
@@ -90,10 +360,16 @@ namespace HospitalSim
             Console.SetCursorPosition(16, Console.CursorTop);
             Escribir("  ▸ Triangular     : Min=10, Moda=28, Máx=40", COLOR_NEUTRO); Console.WriteLine();
             Console.SetCursorPosition(16, Console.CursorTop);
-            Escribir("  ▸ Números U      : ingresados manualmente", COLOR_NEUTRO); Console.WriteLine();
+            Escribir("  ▸ Generador      : Congruencial Mixto propio", COLOR_NEUTRO); Console.WriteLine();
+            Console.SetCursorPosition(16, Console.CursorTop);
+            Escribir("  ▸ Pruebas        : Chi-cuadrada + Kolmogorov-Smirnov", COLOR_NEUTRO); Console.WriteLine();
             Console.WriteLine();
             CentrarTexto("Presiona cualquier tecla para continuar...", ConsoleColor.DarkYellow);
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  MENÚ PRINCIPAL
+        // ─────────────────────────────────────────────────────────────────────
         static void MostrarMenuPrincipal()
         {
             while (true)
@@ -107,6 +383,7 @@ namespace HospitalSim
                     ("2", "Política 2 — Incrementar precio   (mantener calidad)"),
                     ("3", "Comparar ambas políticas"),
                     ("4", "Ver distribuciones del problema"),
+                    ("5", "Reconfigurar generador congruencial"),
                     ("0", "Salir"),
                 };
                 foreach (var (key, desc) in opciones)
@@ -124,31 +401,22 @@ namespace HospitalSim
 
                 switch (input)
                 {
-                    case "1": 
-                        EjecutarPolitica(1); 
-                        break;
-                    case "2": 
-                        EjecutarPolitica(2); 
-                        break;
-                    case "3": 
-                        CompararPoliticas(); 
-                        break;
-                    case "4": 
-                        MostrarDistribuciones(); 
-                        break;
-                    case "0": 
-                        SalirPrograma(); 
-                        return;
+                    case "1": EjecutarPolitica(1); break;
+                    case "2": EjecutarPolitica(2); break;
+                    case "3": CompararPoliticas(); break;
+                    case "4": MostrarDistribuciones(); break;
+                    case "5": ConfigurarGeneradorCongruencial(); break;
+                    case "0": SalirPrograma(); return;
                     default:
                         Escribir("  ⚠ Opción inválida.", COLOR_NEGATIVO);
-                        Thread.Sleep(900); 
+                        Thread.Sleep(900);
                         break;
                 }
             }
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  METODO ESTATICO PARA LA PREPARACIÓN Y CAPTURA DE DATOS PARA LA SIMULACIÓN DE TODO
+        //  PREPARACIÓN Y CAPTURA PARA LA SIMULACIÓN
         // ─────────────────────────────────────────────────────────────────────
         static void EjecutarPolitica(int politica)
         {
@@ -160,12 +428,10 @@ namespace HospitalSim
             Console.WriteLine();
             Console.CursorVisible = true;
 
-            // solicitamos el multiplicador dependiendo de la política seleccionada
             double factor = 1.0;
             if (politica == 1)
             {
                 Escribir("  Factor de servicios por paciente (ej. 1.5 = +50% servicios): ", COLOR_HEADER);
-                // si el usuario da enter vacío o mete letras, usamos 1.5 por defecto
                 if (!double.TryParse(Console.ReadLine(), out factor) || factor <= 0) factor = 1.5;
                 Escribir($"  ✔ Factor aplicado: {factor:F2}x\n", COLOR_POSITIVO);
             }
@@ -177,34 +443,11 @@ namespace HospitalSim
             }
 
             Console.WriteLine();
-            Escribir("  ¿Cuántos números U deseas insertar? (= días a simular): ", COLOR_HEADER);
+            Escribir("  ¿Cuántos DÍAS deseas simular?: ", COLOR_HEADER);
             if (!int.TryParse(Console.ReadLine(), out int cantidad) || cantidad <= 0) cantidad = 20;
-            Escribir($"  ✔ Insertarás {cantidad} número(s) U.\n\n", COLOR_POSITIVO);
+            Escribir($"  ✔ Se simularán {cantidad} días usando el Generador Congruencial.\n\n", COLOR_POSITIVO);
 
-            // bucle de captura manual para los números pseudoaleatorios
-            Escribir("  Ingresa cada número U (entre 0.0 y 1.0) y presiona Enter:\n", COLOR_HEADER);
-            Escribir("  ──────────────────────────────────────────────────────────\n", COLOR_TABLA);
-
-            var numerosU = new List<double>();
-            for (int i = 0; i < cantidad; i++)
-            {
-                double u = -1;
-                // validamos estrictamente que el valor esté en el rango de probabilidad
-                while (u < 0 || u > 1)
-                {
-                    Escribir($"  U[{i + 1,2}] → ", COLOR_ACCENT);
-                    string? entrada = Console.ReadLine()?.Trim().Replace(",", ".");
-                    if (!double.TryParse(entrada,
-                            System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out u) || u < 0 || u > 1)
-                    {
-                        Escribir("       Debe ser un número entre 0.0 y 1.0.\n", COLOR_NEGATIVO);
-                        u = -1;
-                    }
-                }
-                numerosU.Add(u);
-            }
+            var numerosU = _rnd!.Generar(cantidad);
 
             Console.WriteLine();
             Escribir("  ¿Deseas ver el procedimiento paso a paso? [S/N]: ", COLOR_HEADER);
@@ -217,38 +460,31 @@ namespace HospitalSim
             AnimarCarga(20);
             Console.WriteLine("\n");
 
-            // pasamos los números capturados al motor estadístico
             var resultados = Simular(numerosU, politica, factor);
             MostrarResultados(resultados, politica, factor, verProcedimiento);
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  MOTOR DE SIMULACIÓN SEGUN MONTE CARLO 
+        //  MOTOR DE SIMULACIÓN — usa _rnd (congruencial mixto) para servicios
         // ─────────────────────────────────────────────────────────────────────
         static List<ResultadoDia> Simular(List<double> numerosU, int politica, double factor)
         {
             var resultados  = new List<ResultadoDia>();
             double ingresoAcum = 0;
-            
-            // la semilla y nos genere valores duplicados en el proceso automático.
-            Random rnd = new Random();
 
             for (int i = 0; i < numerosU.Count; i++)
             {
-                // 1: Obtener cantidad de pacientes del día
-                double uDia = numerosU[i];
-                int pacientes = AplicarTriangular(uDia, 10, 28, 40);
-
+                double uDia    = numerosU[i];
+                int pacientes  = AplicarTriangular(uDia, 10, 28, 40);
                 double ingresosDia = 0;
 
-                // 2: Evaluar qué consumió cada paciente de forma independiente
                 for (int p = 0; p < pacientes; p++)
                 {
-                    double uServicio = rnd.NextDouble(); 
+                    // Usamos nuestro generador congruencial para el U de servicio
+                    double uServicio = _rnd!.NextDouble();
                     var (servicio, _) = SeleccionarServicioConU(uServicio);
 
-                    // aplicamos las reglas de negocio según la política seleccionada para la simulacion
-                    double precioEfectivo = politica == 1 ? servicio.Precio : servicio.Precio * factor;
+                    double precioEfectivo   = politica == 1 ? servicio.Precio : servicio.Precio * factor;
                     int serviciosPorPaciente = politica == 1 ? (int)Math.Round(factor) : 1;
 
                     ingresosDia += (precioEfectivo * serviciosPorPaciente);
@@ -256,7 +492,6 @@ namespace HospitalSim
 
                 ingresoAcum += ingresosDia;
 
-                // registramos los resultados del día simulado
                 resultados.Add(new ResultadoDia(
                     Dia:              i + 1,
                     UPacientes:       uDia,
@@ -269,7 +504,7 @@ namespace HospitalSim
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  METODO PARA RENDERIZAR TODOS LOS RESULTADOS  REGISTRADOS
+        //  MOSTRAR RESULTADOS
         // ─────────────────────────────────────────────────────────────────────
         static void MostrarResultados(List<ResultadoDia> res, int politica, double factor, bool verProc)
         {
@@ -277,7 +512,6 @@ namespace HospitalSim
             EncabezadoSeccion($"RESULTADOS — POLÍTICA {politica}");
             Console.WriteLine();
 
-            // si el usuario lo pidió, mostramos el desglose matemático de todooo el procedimiento
             if (verProc)
             {
                 MostrarProcedimiento(res, politica, factor);
@@ -289,7 +523,6 @@ namespace HospitalSim
                 Console.WriteLine();
             }
 
-            // mostramos los gráficos y resúmenes financieros del hospital
             MostrarTabla(res);
             Console.WriteLine();
             MostrarResumen(res, politica, factor);
@@ -305,7 +538,6 @@ namespace HospitalSim
             EncabezadoSeccion("PROCEDIMIENTO PASO A PASO");
             Console.WriteLine();
 
-            // calculamos 'fc'
             double fc = (28.0 - 10.0) / (40.0 - 10.0);
             Escribir("  Fórmula Triangular (Min=10, Moda=28, Máx=40):\n", COLOR_HEADER);
             Escribir($"    fc = (28-10)/(40-10) = {fc:F4}\n", COLOR_NEUTRO);
@@ -329,8 +561,8 @@ namespace HospitalSim
                 Escribir($"  │    → Pacientes = ", COLOR_NEUTRO);
                 Escribir($"{r.Pacientes}\n", COLOR_POSITIVO);
 
-                Escribir("  │  PASO 2 y 3 — Servicios e Ingreso\n", COLOR_HEADER);
-                Escribir($"  │    Se simularon {r.Pacientes} servicios de forma automatizada.\n", COLOR_NEUTRO);
+                Escribir("  │  PASO 2 y 3 — Servicios e Ingreso (U via Congruencial Mixto)\n", COLOR_HEADER);
+                Escribir($"  │    Se simularon {r.Pacientes} servicios con el generador Rnd.\n", COLOR_NEUTRO);
                 Escribir($"  │    → Ingreso del día: ", COLOR_NEUTRO);
                 Escribir($"${r.IngresosDia:N2}\n", COLOR_POSITIVO);
                 Escribir($"  │    Acumulado: ${r.IngresoAcumulado:N2}\n", COLOR_INFO);
@@ -349,15 +581,14 @@ namespace HospitalSim
             Escribir("  ║ ", COLOR_TABLA); Escribir(h, COLOR_HEADER); Escribir(" ║\n", COLOR_TABLA);
             Escribir($"  ╠{sep}╣\n", COLOR_TABLA);
 
-            // calculamos cuánto debería generar el hospital diariamente para salir tablas al final de todo
             double costoRef = res.Count > 0 ? CostoMensual / res.Count : 0;
-            
+
             foreach (var r in res)
             {
-                bool cubrio  = r.IngresoAcumulado >= CostoMensual;
-                bool diaOk   = r.IngresosDia >= costoRef; // Compara contra la meta diaria
-                var  cDia    = diaOk ? COLOR_POSITIVO : COLOR_NEGATIVO;
-                var  cAcum   = cubrio ? COLOR_POSITIVO : ConsoleColor.DarkYellow;
+                bool cubrio = r.IngresoAcumulado >= CostoMensual;
+                bool diaOk  = r.IngresosDia >= costoRef;
+                var  cDia   = diaOk  ? COLOR_POSITIVO : COLOR_NEGATIVO;
+                var  cAcum  = cubrio ? COLOR_POSITIVO : ConsoleColor.DarkYellow;
 
                 Escribir("  ║ ", COLOR_TABLA);
                 Escribir($"{r.Dia,4}",                   COLOR_NEUTRO);
@@ -377,16 +608,13 @@ namespace HospitalSim
         static void MostrarResumen(List<ResultadoDia> res, int politica, double factor)
         {
             if (res.Count == 0) return;
-            
-            // cálculos financieros finales
-            double total     = res.Last().IngresoAcumulado;
-            double prom      = total / res.Count;
-            double promPac   = res.Average(r => r.Pacientes);
-            double utilidad  = total - CostoMensual;
-            bool   costeable = utilidad >= 0;
 
-            // buscamos el primer día donde el ingreso acumulado superó los $5000
-            var    diaCub    = res.FirstOrDefault(r => r.IngresoAcumulado >= CostoMensual);
+            double total    = res.Last().IngresoAcumulado;
+            double prom     = total / res.Count;
+            double promPac  = res.Average(r => r.Pacientes);
+            double utilidad = total - CostoMensual;
+            bool costeable  = utilidad >= 0;
+            var  diaCub     = res.FirstOrDefault(r => r.IngresoAcumulado >= CostoMensual);
 
             EncabezadoSeccion("RESUMEN FINANCIERO");
             Console.WriteLine();
@@ -394,7 +622,6 @@ namespace HospitalSim
             string lineaH = new string('─', 60);
             Escribir($"  ┌{lineaH}┐\n", COLOR_TABLA);
 
-            // función helper para imprimir las filas uniformemente
             void Fila(string label, string val, ConsoleColor c)
             {
                 Escribir("  │ ", COLOR_TABLA);
@@ -403,42 +630,40 @@ namespace HospitalSim
                 Escribir(" │\n", COLOR_TABLA);
             }
 
-            Fila("Días simulados:",           $"{res.Count}",                   COLOR_NEUTRO);
-            Fila("Costo mensual operativo:",  $"${CostoMensual:N2}",            COLOR_NEGATIVO);
-            Fila("Total ingresos:",           $"${total:N2}",                   COLOR_POSITIVO);
-            Fila("Promedio ingreso/día:",     $"${prom:N2}",                    COLOR_INFO);
-            Fila("Promedio pacientes/día:",   $"{promPac:F1}",                  COLOR_ACCENT);
-            Fila("Utilidad / Déficit:",       $"${utilidad:N2}",                costeable ? COLOR_POSITIVO : COLOR_NEGATIVO);
-            Fila("¿Es costeable?:",           costeable ? "✔ SÍ" : "✘ NO",     costeable ? COLOR_POSITIVO : COLOR_NEGATIVO);
-            Fila("Costo cubierto en:",        diaCub != null ? $"Día {diaCub.Dia}" : "No cubierto",
-                                                                                diaCub != null ? COLOR_POSITIVO : COLOR_NEGATIVO);
+            Fila("Días simulados:",          $"{res.Count}",                   COLOR_NEUTRO);
+            Fila("Costo mensual operativo:", $"${CostoMensual:N2}",            COLOR_NEGATIVO);
+            Fila("Total ingresos:",          $"${total:N2}",                   COLOR_POSITIVO);
+            Fila("Promedio ingreso/día:",    $"${prom:N2}",                    COLOR_INFO);
+            Fila("Promedio pacientes/día:",  $"{promPac:F1}",                  COLOR_ACCENT);
+            Fila("Utilidad / Déficit:",      $"${utilidad:N2}",                costeable ? COLOR_POSITIVO : COLOR_NEGATIVO);
+            Fila("¿Es costeable?:",          costeable ? "✔ SÍ" : "✘ NO",     costeable ? COLOR_POSITIVO : COLOR_NEGATIVO);
+            Fila("Costo cubierto en:",       diaCub != null ? $"Día {diaCub.Dia}" : "No cubierto",
+                                                                               diaCub != null ? COLOR_POSITIVO : COLOR_NEGATIVO);
 
             Escribir($"  └{lineaH}┘\n", COLOR_TABLA);
             Console.WriteLine();
 
             EncabezadoSeccion($"ANÁLISIS POLÍTICA {politica}");
             Console.WriteLine();
-            
-            // calculamos el valor monetario esperado de un servicio usando su probabilidad base
+
             double avgBase = Servicios.Sum(s => s.Probabilidad * s.Precio);
 
             if (politica == 1)
             {
                 int spxp = (int)Math.Round(factor);
-                Escribir($"  Factor de servicios     : {factor:F2}x ({spxp} serv/paciente)\n", COLOR_ACCENT);
-                Escribir($"  Precio promedio base    : ${avgBase:N2}\n",                        COLOR_INFO);
-        
+                Escribir($"  Factor de servicios      : {factor:F2}x ({spxp} serv/paciente)\n", COLOR_ACCENT);
+                Escribir($"  Precio promedio base     : ${avgBase:N2}\n",                        COLOR_INFO);
                 int pacNec = (int)Math.Ceiling(CostoMensual / (avgBase * spxp * res.Count));
-                Escribir($"  Pacientes mín/día       : ~{pacNec}\n",                            COLOR_NEUTRO);
+                Escribir($"  Pacientes mín/día        : ~{pacNec}\n",                            COLOR_NEUTRO);
             }
             else
             {
                 double ajust = avgBase * factor;
-                Escribir($"  Factor de precio        : {factor:F2}x\n",          COLOR_ACCENT);
-                Escribir($"  Precio promedio base    : ${avgBase:N2}\n",          COLOR_NEUTRO);
-                Escribir($"  Precio promedio ajust.  : ${ajust:N2}\n",            COLOR_POSITIVO);
+                Escribir($"  Factor de precio         : {factor:F2}x\n",        COLOR_ACCENT);
+                Escribir($"  Precio promedio base     : ${avgBase:N2}\n",        COLOR_NEUTRO);
+                Escribir($"  Precio promedio ajust.   : ${ajust:N2}\n",          COLOR_POSITIVO);
                 int pacNec = (int)Math.Ceiling(CostoMensual / (ajust * res.Count));
-                Escribir($"  Pacientes mín/día       : ~{pacNec}\n",              COLOR_NEUTRO);
+                Escribir($"  Pacientes mín/día        : ~{pacNec}\n",            COLOR_NEUTRO);
             }
             Console.WriteLine();
         }
@@ -446,11 +671,10 @@ namespace HospitalSim
         static void MostrarGraficaBarras(List<ResultadoDia> res)
         {
             if (res.Count == 0) return;
-            
+
             EncabezadoSeccion("GRÁFICA DE INGRESOS POR DÍA");
             Console.WriteLine();
 
-            // obtenemos el ingreso máximo para normalizar el tamaño de las barras
             double max      = res.Max(r => r.IngresosDia);
             double costoRef = CostoMensual / res.Count;
 
@@ -471,7 +695,7 @@ namespace HospitalSim
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  COMPARACIÓN EN PARALELO DE AMBAS POLITICAS
+        //  COMPARAR POLÍTICAS
         // ─────────────────────────────────────────────────────────────────────
         static void CompararPoliticas()
         {
@@ -486,42 +710,16 @@ namespace HospitalSim
             if (!double.TryParse(Console.ReadLine(), out double f2) || f2 <= 0) f2 = 1.3;
 
             Console.WriteLine();
-            Escribir("  ¿Cuántos números U deseas insertar? (= días): ", COLOR_HEADER);
+            Escribir("  ¿Cuántos DÍAS deseas simular para la comparación?: ", COLOR_HEADER);
             if (!int.TryParse(Console.ReadLine(), out int cantidad) || cantidad <= 0) cantidad = 20;
-            Escribir($"  ✔ Insertarás {cantidad} número(s) U (compartidos por ambas políticas).\n\n", COLOR_POSITIVO);
+            Escribir($"  ✔ Se simularán {cantidad} días compartidos por ambas políticas.\n\n", COLOR_POSITIVO);
 
-            Escribir("  Ingresa cada número U (entre 0.0 y 1.0):\n", COLOR_HEADER);
-            Escribir("  ──────────────────────────────────────────\n", COLOR_TABLA);
-
-            var numerosU = new List<double>();
-            for (int i = 0; i < cantidad; i++)
-            {
-                double u = -1;
-                while (u < 0 || u > 1)
-                {
-                    Escribir($"  U[{i + 1,2}] → ", COLOR_ACCENT);
-                    string? ent = Console.ReadLine()?.Trim().Replace(",", ".");
-                    if (!double.TryParse(ent,
-                            System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out u) || u < 0 || u > 1)
-                    {
-                        Escribir("       ⚠ Debe ser entre 0.0 y 1.0.\n", COLOR_NEGATIVO);
-                        u = -1;
-                    }
-                }
-                numerosU.Add(u);
-            }
+            var numerosU = _rnd!.Generar(cantidad);
             Console.CursorVisible = false;
 
             Escribir("\n  Simulando política 1", COLOR_INFO); AnimarCarga(15);
-
-            // simula Política 1
             var r1 = Simular(numerosU, 1, f1);
-            
             Escribir("\n  Simulando política 2", COLOR_INFO); AnimarCarga(15);
-            
-            // simula Política 2 (Importante: usamos los mismos números U base para una comparación justa)
             var r2 = Simular(numerosU, 2, f2);
 
             Console.Clear();
@@ -549,16 +747,15 @@ namespace HospitalSim
                 Escribir("   ║\n", COLOR_TABLA);
             }
 
-            FilaCmp("Total Ingresos:",      $"${t1:N2}",                       $"${t2:N2}",                       COLOR_POSITIVO);
-            FilaCmp("¿Costeable?:",         c1 ? "SÍ ✔" : "NO ✘",             c2 ? "SÍ ✔" : "NO ✘",             c1 == c2 ? COLOR_NEUTRO : COLOR_ACCENT);
-            FilaCmp("Utilidad:",            $"${t1 - CostoMensual:N2}",        $"${t2 - CostoMensual:N2}",        t1 >= t2 ? COLOR_POSITIVO : COLOR_INFO);
-            FilaCmp("Prom. Pacientes/día:", $"{r1.Average(r => r.Pacientes):F1}", $"{r2.Average(r => r.Pacientes):F1}", COLOR_ACCENT);
-            FilaCmp("Prom. Ingreso/día:",   $"${r1.Average(r => r.IngresosDia):N2}", $"${r2.Average(r => r.IngresosDia):N2}", COLOR_INFO);
+            FilaCmp("Total Ingresos:",       $"${t1:N2}",                           $"${t2:N2}",                           COLOR_POSITIVO);
+            FilaCmp("¿Costeable?:",          c1 ? "SÍ ✔" : "NO ✘",                c2 ? "SÍ ✔" : "NO ✘",                c1 == c2 ? COLOR_NEUTRO : COLOR_ACCENT);
+            FilaCmp("Utilidad:",             $"${t1 - CostoMensual:N2}",           $"${t2 - CostoMensual:N2}",           t1 >= t2 ? COLOR_POSITIVO : COLOR_INFO);
+            FilaCmp("Prom. Pacientes/día:",  $"{r1.Average(r => r.Pacientes):F1}", $"{r2.Average(r => r.Pacientes):F1}", COLOR_ACCENT);
+            FilaCmp("Prom. Ingreso/día:",    $"${r1.Average(r => r.IngresosDia):N2}", $"${r2.Average(r => r.IngresosDia):N2}", COLOR_INFO);
 
             Escribir($"  ╚{sep}╝\n", COLOR_TABLA);
             Console.WriteLine();
 
-            // aqui se recomienda automáticamente la política que haya generado mayor utilidad al final de la simulacion
             string rec = t1 >= t2 ? "POLÍTICA 1" : "POLÍTICA 2";
             Escribir("  ★ Política recomendada: ", COLOR_HEADER);
             Escribir($"{rec}\n", COLOR_POSITIVO);
@@ -569,7 +766,7 @@ namespace HospitalSim
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  PANTALLA ESTADÍSTICA
+        //  DISTRIBUCIONES
         // ─────────────────────────────────────────────────────────────────────
         static void MostrarDistribuciones()
         {
@@ -585,7 +782,6 @@ namespace HospitalSim
             Escribir("║\n", COLOR_TABLA);
             Escribir($"  ╠{sep}╣\n", COLOR_TABLA);
 
-            // se calcula la probabilidad acumulada de forma dinámica
             double cdf = 0;
             foreach (var s in Servicios)
             {
@@ -595,7 +791,7 @@ namespace HospitalSim
                 Escribir($"{s.Nombre,-26}", COLOR_INFO);
                 Escribir($"{s.Probabilidad,8:P0}", COLOR_ACCENT);
                 Escribir($"${s.Precio,9:N2}", COLOR_POSITIVO);
-                Escribir($"({antes:F2},{cdf:F2}]", COLOR_NEUTRO); 
+                Escribir($"({antes:F2},{cdf:F2}]", COLOR_NEUTRO);
                 Escribir("   ║\n", COLOR_TABLA);
             }
             Escribir($"  ╚{sep}╝\n", COLOR_TABLA);
@@ -607,11 +803,10 @@ namespace HospitalSim
             Escribir("    Si U < fc  →  X = 10 + √(U × 30 × 18)\n", COLOR_NEUTRO);
             Escribir("    Si U ≥ fc  →  X = 40 - √((1-U) × 30 × 12)\n\n", COLOR_NEUTRO);
 
-            // verificación matemática de si el negocio es sostenible sin aplicar políticas
-            double precioEsp  = Servicios.Sum(s => s.Probabilidad * s.Precio);
-            double ingEspDia  = precioEsp * 28; 
-            double ingEspMes  = ingEspDia * 30; 
-            bool   teorico    = ingEspMes >= CostoMensual;
+            double precioEsp = Servicios.Sum(s => s.Probabilidad * s.Precio);
+            double ingEspDia = precioEsp * 28;
+            double ingEspMes = ingEspDia * 30;
+            bool   teorico   = ingEspMes >= CostoMensual;
 
             Escribir($"  Precio esperado ponderado     : ${precioEsp:N2}\n", COLOR_POSITIVO);
             Escribir($"  Ingreso esperado/día (moda=28): ${ingEspDia:N2}\n", COLOR_INFO);
@@ -638,18 +833,14 @@ namespace HospitalSim
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  MÉTODOS ESTADÍSTICOS Y MATEMÁTICOS (CORE PRINCIPAL DE EL MOTOR MATEMATICO)
+        //  MÉTODOS ESTADÍSTICOS Y MATEMÁTICOS
         // ─────────────────────────────────────────────────────────────────────
         static int AplicarTriangular(double u, double min, double moda, double max)
         {
-            // 'fc' delimita el pico del triangulo. Separa la rama ascendente de la descendente.
             double fc = (moda - min) / (max - min);
-            
             double x  = u < fc
-                ? min + Math.Sqrt(u * (max - min) * (moda - min)) // rama izquierda
-                : max - Math.Sqrt((1 - u) * (max - min) * (max - moda)); // rama derecha
-            
-            // retornamos redondeado porque no pueden existir pacientes fraccionarios
+                ? min + Math.Sqrt(u * (max - min) * (moda - min))
+                : max - Math.Sqrt((1 - u) * (max - min) * (max - moda));
             return (int)Math.Round(x);
         }
 
@@ -659,17 +850,29 @@ namespace HospitalSim
             foreach (var s in Servicios)
             {
                 acum += s.Probabilidad;
-
-                // si el numero aleatorio cae en este rango acumulado, este es el servicio ganador
                 if (u <= acum) return (s, acum);
             }
-            // retorno por seguridad en caso de fallo de redondeo decimal en la lista 
             return (Servicios.Last(), 1.0);
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        //  HELPERS DE INTERFAZ DE USUARIO (PARA TODO EL DIBUJADO DE LA CONSOLA)
+        //  HELPERS
         // ─────────────────────────────────────────────────────────────────────
+        static long PedirEnteroPositivo(string prompt)
+        {
+            long valor = -1;
+            while (valor <= 0)
+            {
+                Escribir(prompt, COLOR_HEADER);
+                if (!long.TryParse(Console.ReadLine(), out valor) || valor <= 0)
+                {
+                    Escribir("  ⚠ Ingresa un entero positivo.\n", COLOR_NEGATIVO);
+                    valor = -1;
+                }
+            }
+            return valor;
+        }
+
         static void Escribir(string texto, ConsoleColor color)
         {
             var prev = Console.ForegroundColor;
@@ -712,7 +915,6 @@ namespace HospitalSim
 
         static void AnimarCarga(int pasos)
         {
-            // animación sencilla del spinner de carga
             string[] spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
             for (int i = 0; i < pasos; i++)
             {
