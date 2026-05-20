@@ -195,3 +195,4 @@
 /Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Release/net8.0/win-x64/hospitalito.pdb
 /Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Release/net8.0/win-x64/hospitalito.genruntimeconfig.cache
 /Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Release/net8.0/win-x64/ref/hospitalito.dll
+/Users/axelabojorquezcastro/Documents/School/Simulacion/Hospital/hospitalito/obj/Release/net8.0/win-x64/hospitalito.sourcelink.json
