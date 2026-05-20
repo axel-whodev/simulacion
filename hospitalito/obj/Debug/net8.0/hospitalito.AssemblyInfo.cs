@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("hospitalito")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+27e09d1d86caed3ea26e4aa09a291b300525e2f5")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a50294730b5c01ce38074b9ac0b62b45dc1901c7")]
 [assembly: System.Reflection.AssemblyProductAttribute("hospitalito")]
 [assembly: System.Reflection.AssemblyTitleAttribute("hospitalito")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
